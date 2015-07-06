@@ -30,7 +30,7 @@ WAVCreator::WAVCreator(
     this->lPhase = lPhase;      this->rPhase = rPhase;
     
     this->data = new int16_t[2 * sampleRate * duration];
-    for (int i = 0; i < 2 * sampleRate * duration - 1; i += 2)
+    for (size_t i = 0; i < 2 * sampleRate * duration - 1; i += 2)
     {
         double lAngle = PI * lFreq * ((double)i / (double)sampleRate) + lPhase;
         int16_t lData = (int16_t)(lAmp * cos(lAngle));
