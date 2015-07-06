@@ -1,54 +1,66 @@
 #include "WAVCreator.h"
 
+////////////////////////////////////////////////////////////////////////////////
+// Constructors
+
 WAVCreator::WAVCreator()
 {
-    fileName = NULL;
-    data = NULL;
-    
-    sampleRate  = 0;
-    duration    = 0;
-    
-    lAmp    = 0;    rAmp    = 0;
-    lFreq   = .0;   rFreq   = .0;
-    lPhase  = .0;   rPhase  = .0;
+    fileName      = NULL;
+    data          = NULL;
+
+    samples       = 0;
+
+    bitsPerSample = 0;
+    numChannels   = 0;
+    sampleRate    = 0;
 }
 
 WAVCreator::WAVCreator(
-    char* fileName, uint32_t sampleRate, uint16_t duration,
-    int16_t lAmp, double lFreq, double lPhase,
-    int16_t rAmp, double rFreq, double rPhase)
+    char* fileName, uint32_t samples, uint32_t sampleRate,
+    uint16_t numChannels, uint16_t bitsPerSample)
 {
-    int fileLenght = strlen(fileName) + 1;
+    size_t fileLenght = strlen(fileName) + 1;
     this->fileName = new char[fileLenght];
     memcpy(this->fileName, fileName, fileLenght);
-    
+
+    this->samples = samples;
+
     this->sampleRate = sampleRate;
-    this->duration = duration;
-    
-    this->lAmp   = lAmp;        this->rAmp   = rAmp;
-    this->lFreq  = lFreq;       this->rFreq  = rFreq;
-    this->lPhase = lPhase;      this->rPhase = rPhase;
-    
-    this->data = new int16_t[2 * sampleRate * duration];
-    for (size_t i = 0; i < 2 * sampleRate * duration - 1; i += 2)
+    this->numChannels = numChannels;
+    this->bitsPerSample = bitsPerSample;
+
+    this->data = new int16_t[numChannels * samples];
+
+    for (size_t i = 0; i < numChannels * samples; i++)
     {
-        double lAngle = PI * lFreq * ((double)i / (double)sampleRate) + lPhase;
-        int16_t lData = (int16_t)(lAmp * cos(lAngle));
-        double rAngle = PI * rFreq * ((double)i / (double)sampleRate) + rPhase;
-        int16_t rData = (int16_t)(lAmp * cos(rAngle));
-        
-        this->data[i]       = lData;
-        this->data[i + 1]   = rData;
+        data[i] = 0;
     }
+}
+
+WAVCreator::WAVCreator(
+    char* fileName, int16_t* data, uint32_t samples, uint32_t sampleRate,
+    uint16_t numChannels, uint16_t bitsPerSample) 
+: WAVCreator(fileName, samples, sampleRate, numChannels, bitsPerSample)
+{
+    memcpy(this->data, data, samples * bitsPerSample / 8 * numChannels);
+}
+
+WAVCreator::WAVCreator(
+    char* fileName, uint32_t samples, int16_t* waveForm, size_t waveSamples,
+    uint32_t sampleRate, uint16_t numChannels, uint16_t bitsPerSample) 
+: WAVCreator(fileName, samples, sampleRate, numChannels, bitsPerSample)
+{
+    fillData(waveForm, waveSamples);
 }
 
 WAVCreator::WAVCreator(WAVCreator& X)
 {
     WAVCreator::~WAVCreator();
+
     WAVCreator::WAVCreator(
-        X.fileName, X.sampleRate, X.duration,
-        X.lAmp, X.lFreq, X.lPhase,
-        X.rAmp, X.rFreq, X.rPhase);
+        X.fileName, X.data, X.samples, X.sampleRate, 
+        X.numChannels, X.bitsPerSample
+        );
 }
 
 WAVCreator& 
@@ -73,18 +85,18 @@ WAVCreator::~WAVCreator()
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// Functions
+
 void 
-WAVCreator::createHeader(
-    char* header, uint32_t sampleRate, uint16_t duration,
-    uint16_t numChannels, uint16_t bitsPerSample
-    )
+WAVCreator::createHeader(char* header)
 {
     uint32_t subChunk1Size  = 16;       // 16 for PCM.
     uint16_t audioFormat    = 1;        //  1 for PCM.
 
     uint32_t byteRate       = sampleRate * numChannels * bitsPerSample / 8;
     uint16_t blockAlign     = numChannels * bitsPerSample / 8;
-    uint32_t subChunk2Size  = byteRate * duration;
+    uint32_t subChunk2Size  = samples * bitsPerSample / 8;
 
     uint32_t chunkSize      = 4 + (8 + subChunk1Size) + (8 + subChunk2Size);
     
@@ -156,15 +168,15 @@ WAVCreator::toFile()
     
     if (!file.good()) 
     {
-        cout << "Unable to open file for writing!" << endl;
+        cout << "Unable to open file for writing!" << endl << flush;
         return (false);
     }
     
     char* header = new char[44];
-    createHeader(header, sampleRate, duration);
+    createHeader(header);
     
     file.write(header, 44);
-    file.write((char*)this->data, 4 * sampleRate * duration);
+    file.write((char*)this->data, samples * bitsPerSample / 8 * numChannels);
     
     file.flush();
     file.close();
@@ -172,4 +184,28 @@ WAVCreator::toFile()
     delete header;
     
     return(true);
+}
+
+void
+WAVCreator::fillData(int16_t* waveForm, size_t waveSamples)
+{
+    size_t cycles = (this->samples * this->numChannels) / waveSamples;
+    size_t rest   = (this->samples * this->numChannels) % waveSamples;
+
+    size_t i = 0;
+
+    for (size_t n = 0; n < cycles; n++)
+    {
+        for (size_t j = 0; j < waveSamples; j++)
+        {
+            this->data[i] = waveForm[j];
+            i++;
+        }
+    }
+
+    for (size_t j = 0; j < rest; j++)
+    {
+        this->data[i] = waveForm[j];
+        i++;
+    }
 }
